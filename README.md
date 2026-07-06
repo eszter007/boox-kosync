@@ -136,3 +136,11 @@ cd android
 
 Release builds are signed when `KEYSTORE_FILE` / `KEYSTORE_PASSWORD` /
 `KEY_ALIAS` / `KEY_PASSWORD` are provided via environment or `local.properties`.
+
+## Credits
+
+App icon by [ふにゃ猫 – funyaneko](https://iconbu.com/).
+
+Forked from [Tukks/onyxbooxsync.koplugin](https://github.com/Tukks/onyxbooxsync.koplugin);
+kosync protocol compatibility modeled on
+[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader)'s KOReaderSync client.
