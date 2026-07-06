@@ -64,6 +64,19 @@ Two separate mechanisms, discovered the hard way:
   (`KILL_BACKGROUND_PROCESSES`, background-only — an active foreground
   reading session is never interrupted).
 
+### Reading statistics
+
+Reading done on other kosync devices is written into Onyx's statistics
+provider (`OnyxStatisticsModel`) so it shows up in the Boox reading stats and
+account. Requires a signed-in Onyx account. kosync only carries
+percentage + timestamp, so per-page durations are **estimates** (the window
+between syncs spread across the pages read, clamped to 15–120 s/page);
+page counts and reading days are accurate. Synthetic rows carry a
+`synced from <device>` comment so they can be told apart from NeoReader's
+native records. Local NeoReader reading is recorded by Onyx natively and is
+never touched. Known edge: if a newer-stamped remote position re-covers pages
+already read locally, those pages can be double-counted.
+
 ### Manual sync
 
 The settings screen has a "Manual sync" section for the most recently read

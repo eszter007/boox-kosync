@@ -71,6 +71,21 @@ public final class SyncActions {
         state.lastWrittenProgress = written;
         state.lastWrittenAccessMs = remoteMs;
         stateStore.put(book.path, state);
+
+        // Reading done on the other device should show up in the Boox reading
+        // statistics too (estimated durations; local NeoReader reading is
+        // recorded by Onyx natively). Best-effort — never fails the sync.
+        int localPage = book.currentPage();
+        if (page > localPage) {
+            try {
+                new org.koreader.backgroundonyxsynckoreader.contentprovider.OnyxStatisticsRepository(context)
+                        .recordRemoteReading(book, localPage, page, total,
+                                book.lastAccessMs, remoteMs,
+                                remote.device != null && !remote.device.isEmpty()
+                                        ? remote.device : "remote device");
+            } catch (Exception ignored) {
+            }
+        }
         return written;
     }
 

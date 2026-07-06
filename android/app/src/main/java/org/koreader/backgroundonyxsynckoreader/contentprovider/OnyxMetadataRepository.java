@@ -53,6 +53,9 @@ public class OnyxMetadataRepository {
         public int readingStatus;
         public String extraAttributes; // NeoReader's settings/position JSON, may be null
 
+        public String uuid;    // Onyx's docId for this book (stats rows key on it)
+        public String hashTag; // Onyx's own file MD5
+
         /** NeoReader's internal position, or -1 when absent. */
         public long positionV2() {
             if (extraAttributes == null) return -1;
@@ -91,7 +94,7 @@ public class OnyxMetadataRepository {
         try (Cursor cursor = resolver.query(
                 METADATA_URI,
                 new String[]{COL_PATH, COL_NAME, COL_PROGRESS, COL_LAST_ACCESS, COL_READING_STATUS,
-                        COL_EXTRA},
+                        COL_EXTRA, "uuid", "hashTag"},
                 COL_PROGRESS + " IS NOT NULL",
                 null,
                 COL_LAST_ACCESS + " DESC")) {
@@ -107,6 +110,8 @@ public class OnyxMetadataRepository {
                 book.lastAccessMs = cursor.isNull(3) ? 0 : cursor.getLong(3);
                 book.readingStatus = cursor.isNull(4) ? 0 : cursor.getInt(4);
                 book.extraAttributes = cursor.getString(5);
+                book.uuid = cursor.getString(6);
+                book.hashTag = cursor.getString(7);
                 if (book.path != null) {
                     books.add(book);
                 }
