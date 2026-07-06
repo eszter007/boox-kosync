@@ -1,3 +1,39 @@
 <resources>
-    <string name="app_name">Background Onyx Sync KOReader</string>
+    <string name="app_name">KOSync for Boox</string>
+
+    <string name="settings_header">KOReader Sync Server</string>
+    <string name="label_server_url">Sync server URL</string>
+    <string name="hint_server_url">https://sync.koreader.rocks</string>
+    <string name="label_username">Username</string>
+    <string name="label_password">Password</string>
+    <string name="password_stored_hint">(stored — leave blank to keep)</string>
+    <string name="label_match_method">Document matching</string>
+    <string name="match_binary">Binary (partial MD5, KOReader default)</string>
+    <string name="match_filename">Filename</string>
+    <string name="button_authenticate">Save &amp; Authenticate</string>
+    <string name="auth_in_progress">Authenticating…</string>
+    <string name="auth_success">Authentication successful</string>
+
+    <string name="manual_sync_header">Manual sync (latest book)</string>
+    <string name="button_manual_check">Check progress</string>
+    <string name="button_apply_remote">Apply remote</string>
+    <string name="button_upload_local">Upload local</string>
+    <string name="manual_checking">Checking…</string>
+    <string name="manual_no_books">No books with reading progress found</string>
+    <string name="manual_no_remote">Remote: no progress on server</string>
+    <string name="manual_apply_done">Remote progress applied — reopen the book in NeoReader</string>
+    <string name="manual_upload_done">Local progress uploaded</string>
+
+    <string name="status_header">Status</string>
+    <string name="status_never_synced">No sync yet</string>
+
+    <string name="notification_channel_name">Background sync</string>
+    <string name="notification_title">Syncing reading progress</string>
+
+    <string name="storage_dialog_title">Storage permission required</string>
+    <string name="storage_dialog_message">This app reads your book files to compute the same
+        document hash KOReader uses, so progress matches across devices.\n\nPlease enable
+        “Allow access to manage all files” on the next screen.</string>
+    <string name="storage_dialog_open_settings">Open settings</string>
+    <string name="storage_dialog_cancel">Cancel</string>
 </resources>

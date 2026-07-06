@@ -1,187 +1,125 @@
-# Onyx Progress Sync
+# KOSync for Boox
 
-Syncs KOReader reading progress and statistics into the Onyx Boox library so progress and reading time stay visible in the Onyx library and Onyx account.
+A standalone [KOReader-Sync (kosync)](https://github.com/koreader/koreader-sync-server)
+client for Onyx Boox devices. It keeps **NeoReader** (Onyx's built-in reader) in sync
+with any other kosync-speaking device — KOReader itself, or an Xteink X4 running
+[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) firmware.
 
-## Features
+Forked from [Tukks/onyxbooxsync.koplugin](https://github.com/Tukks/onyxbooxsync.koplugin),
+but repurposed: the original was a KOReader plugin plus a headless mirror app.
+**KOReader is no longer required on the device.** This app watches Onyx's own
+content provider for reading activity in NeoReader and talks to the sync server
+directly.
 
-- Updates Onyx metadata with in-flow page/total pages.
-- Marks the book as reading, unopened or finished and updates last access timestamp.
-- Records reading time per page into Onyx reading statistics.
-- Backfills full reading history from KOReader's statistics database on every page turn.
-- Debounced syncing on page turns plus immediate sync on lifecycle events.
+## How it works
 
-## Requirements
+A foreground service observes Onyx's `Metadata` content provider
+(`content://com.onyx.content.database.ContentProvider/Metadata`), with a
+periodic poll as fallback:
 
-- KOReader on an Android-based Onyx device.
-- The **All files access** (`MANAGE_EXTERNAL_STORAGE`) permission must be granted to the companion app once — required to read KOReader's statistics database.
+- **Push** — when NeoReader's page position changes (debounced ~3 s so rapid
+  page turns produce one request), the book's progress is converted to a
+  percentage (`page / totalPages`) and PUT to the sync server.
+- **Pull** — when a book is opened (its `lastAccess` bumps) the server is
+  queried. If the remote position carries a **strictly newer timestamp** than
+  the local one, the percentage is converted back to a page and written into
+  the Onyx provider so NeoReader reflects it. Newest-timestamp-wins; the local
+  position is never blindly overwritten.
+- **Boot** — a `BOOT_COMPLETED` receiver restarts the service automatically.
 
-## How It Works
+### Cross-device book matching
 
-The plugin communicates with a small companion app running as a background service. This is necessary because KOReader's JNI bridge is not stable enough to write to the Onyx content provider directly from Lua. The companion app has no UI — it runs silently in the background and handles all content provider writes on behalf of the plugin.
+Books are identified by **KOReader's partial-MD5 document hash**: MD5 over
+1024-byte chunks read at offset 0 and at `1024 << (2*i)` for `i = 0..10`
+(1 KB, 4 KB, 16 KB … 1 GB), skipping offsets past end-of-file. This matches
+KOReader's `util.partialMD5()` and CrossPoint's binary match mode
+byte-for-byte (note: KOReader's first chunk is offset **0**, not 256 — LuaJIT's
+`lshift(1024, -2)` masks to zero). A filename-MD5 mode is also available for
+setups that match by filename instead; pick the **same mode on every device**.
 
-### Reading Statistics
+The unit test `KoReaderDocumentHashTest` locks the hash to reference values —
+a mismatch here breaks book matching silently, with both devices happily
+"syncing" to different document IDs.
 
-On every page turn, the companion app reads KOReader's `statistics.sqlite3` database and syncs any missing reading sessions into the Onyx statistics provider. This means:
+### Position resolution
 
-- **Live tracking**: each page turn is recorded with its duration and reading progress.
-- **Automatic backfill**: any sessions recorded before the app was installed are synced incrementally, so your full reading history appears in your Onyx account without any manual migration step.
-- **Duplicate prevention**: sessions already present in Onyx (matched by timestamp) are never inserted twice.
-- **Book opened/finished events**: recorded automatically when KOReader reports the book status as reading or complete.
+Onyx's provider only exposes `page/totalPages`, so pushes carry percentage
+(and page number as the progress string) — no paragraph-level XPath. Pulling
+into NeoReader rounds the remote percentage to the nearest page. This is the
+same accepted resolution loss CrossPoint had before its XPath rework.
 
-## Installation
+### How pulls reach NeoReader (verified on a Poke3, Android 10)
 
-### 1. Companion App
+Two separate mechanisms, discovered the hard way:
 
-1. Download and install `onyx-sync.apk` from the [latest release](../../releases/latest).
-2. Long press the app icon on the home screen and tap **Unfreeze** — Onyx freezes newly installed apps by default, which would prevent the service from running in the background.
-3. Launch the app once — a permission dialog will appear asking for **All files access**. Grant it so the app can read KOReader's statistics database. Nothing else will appear on screen; the app will close automatically.
+- The `progress` column ("page/total") only drives the **library shelf**.
+- NeoReader's actual reading position is `current_page_position_v2` inside
+  the `extraAttributes` JSON — character-offset-like units, book-specific.
+  The app learns the units by recording NeoReader-authored
+  (position, percentage) pairs per book and scales pulled percentages
+  accordingly (lands within a page).
+- NeoReader only **reads** that field on a cold start; a cached process
+  restores its private store and overwrites the row. Applying remote progress
+  therefore kills NeoReader's background process first
+  (`KILL_BACKGROUND_PROCESSES`, background-only — an active foreground
+  reading session is never interrupted).
 
-### 2. Plugin
+### Manual sync
 
-1. Create the folder `koreader/plugins/onyxbooxsync.koplugin` on your device.
-2. Copy `main.lua` and `_meta.lua` into the folder.
-3. Restart KOReader.
-4. Ensure the plugin is enabled in KOReader settings.
+The settings screen has a "Manual sync" section for the most recently read
+book: it shows the local and remote positions side by side, with **Apply
+remote** / **Upload local** buttons that skip the newest-timestamp rule —
+for the standoff where opening a book locally re-stamped `lastAccess` newer
+than remote progress you actually want. Automatic sync is unaffected.
 
-### Auto-updates
+## Setup
 
-Install the [UpdatesManager plugin](https://github.com/advokatb/updatesmanager.koplugin) to keep Onyx Progress Sync up to date automatically from within KOReader.
+1. Install the APK, long-press the icon and **Unfreeze** it (Onyx freezes new
+   apps by default), then launch it.
+2. Grant **All files access** when prompted — needed to read book files for
+   the partial-MD5 hash.
+3. Enter the same values you use in CrossPoint's KOReader Sync menu:
+   - **Sync server URL** — e.g. `https://sync.koreader.rocks` or a self-hosted
+     `http://<server-ip>:17200`. A bare host gets `http://` prepended, same as
+     CrossPoint.
+   - **Username** and **password** — only the MD5 hash of the password is
+     stored (computed once at entry, identical to what CrossPoint sends as
+     `x-auth-key`), never the plaintext.
+4. Tap **Save & Authenticate** to round-trip test against the server.
+5. **On Onyx devices, also check** Settings → Apps → this app → allow
+   auto-start / background running. Onyx's own power management can kill or
+   block the service after boot regardless of the manifest permissions —
+   verify the persistent "Syncing reading progress" notification survives a
+   reboot.
 
-## When It Syncs
+### Registering an account
 
-### Progress & metadata
-- On page updates (debounced, ~3s).
-- When a document is closed.
-- When settings are saved.
-- When the app is suspended (sent to background).
-- When end of book is reached.
+The app has no register button. Create the account once from KOReader or
+CrossPoint (both have a register flow), or via the server's own UI, then enter
+the same credentials here.
 
-### Reading statistics
-- On every page turn — records the duration spent on the previous page and backfills any missing history for the current book.
-- When a book is marked as finished — inserts a completion event with the last-read timestamp.
-- When a book is opened/reading — inserts an opened event.
+## Known limitations
 
-### Bulk update
-- When **Scan and update all books** is triggered manually — syncs progress metadata and full reading history for every book in the current directory.
+- **Calibre-Web-Automated**: CWA's kosync bridge authenticates with HTTP Basic
+  using the *plaintext* password. Since this app deliberately stores only the
+  MD5 hash, it sends the standard kosync `x-auth-user`/`x-auth-key` headers
+  only. Stock kosync servers (and CrossPoint-compatible setups) work; CWA may
+  not.
+- Progress resolution is one page — see *Position resolution* above.
+- A pull landing while NeoReader has the book open in the foreground cannot
+  move the open reader; the synced position takes effect on the next cold
+  open. If you read from the stale spot instead, that position legitimately
+  wins as newest — use the manual sync buttons to recover.
+- KOReader installed on the same device with the same kosync account will
+  fight this app (it pushes its own positions, e.g. the cover page on open).
+  Disable its kosync plugin or log it out.
 
-## Notes
+## Building
 
-- Only runs on Android devices (no effect on other platforms).
-- Only tested on Boox Go 7.
-- Completion is detected from KOReader summary status or when the last page in the main flow is reached.
-- The companion app has no UI. Launching it once is only needed to grant the storage permission and initialize the background service.
-- Reading time shown in your Onyx account may differ slightly from KOReader's own statistics screen if the book was previously opened in the native Onyx reader — those sessions are counted in Onyx but not in KOReader.
-
-## Bulk Update
-
-The plugin adds a menu entry under **Onyx Progress Sync → Scan and update all books in current directory** in KOReader's FILE BROWSER menu (only visible in the library).
-
-This scans the current folder and pushes progress and reading history for every book, so the Onyx library shows up-to-date percentages, reading statuses and statistics without having to open each book individually.
-
-![menu](/asset/librarymenudetail.png)
-
-## ADB Cheat-Sheet
-
-**Query all Onyx metadata (reading progress)**
-```sh
-adb shell content query --uri content://com.onyx.content.database.ContentProvider/Metadata
+```bash
+cd android
+./gradlew assembleDebug   # needs JDK 17+ and the Android SDK (compileSdk 36)
 ```
 
-**Query Onyx reading statistics**
-```sh
-adb shell content query --uri content://com.onyx.kreader.statistics.provider/OnyxStatisticsModel
-```
-
-**Query statistics for a specific book**
-```sh
-adb shell content query \
-  --uri content://com.onyx.kreader.statistics.provider/OnyxStatisticsModel \
-  --projection "id,eventTime,durationTime,type,path" | grep "YourBookName"
-adb shell 'content query \
-  --uri content://com.onyx.content.database.ContentProvider/Metadata \
-  --where "nativeAbsolutePath='\''/storage/emulated/0/Books/Des fleurs pour Algernon - Daniel Keyes.epub'\'' OR id=1"'
-```
-
-**Deploy the plugin during development**
-```sh
-adb push ./main.lua /sdcard/koreader/plugins/onyx_sync.koplugin/main.lua
-```
-
-**View companion app logs**
-```sh
-adb logcat -s OnyxStatisticsProvider:* PageTurnReceiver:* SyncReceiver:*
-```
-
-**View plugin logs**
-```sh
-adb logcat -s KOReader:*
-```
-
-**Delete already created Statistic**
- ```sh
- adb shell content delete \
-  --uri content://com.onyx.kreader.statistics.provider/OnyxStatisticsModel \
-  --where "type=\'1\'"
-adb shell content delete \
-  --uri content://com.onyx.kreader.statistics.provider/OnyxStatisticsModel \
-  --where "type=\'0\'"
-adb shell content delete \
-  --uri content://com.onyx.kreader.statistics.provider/OnyxStatisticsModel \
-  --where "type=\'6\'"
-  ```
-
-## Troubleshooting
-
-**Books not showing up in the Onyx library after a bulk update**
-
-The Onyx library needs to be rescanned to pick up newly indexed books:
-
-1. Open the Onyx Library app.
-2. Tap the menu icon in the upper right corner.
-3. Go to **Library Settings → Select folders → Rescan** (upper right corner).
-4. Come back to KOReader and run **Scan and update all books in current directory** again.
-
-## Release Process
-
-### Plugin-only release
-
-1. Update the version string in `_meta.lua`:
-   ```lua
-   version = "v0.0.X",
-   ```
-
-2. Commit and push the version bump:
-   ```sh
-   git add _meta.lua
-   git commit -m "Bump version to 0.0.X"
-   git push origin main
-   ```
-
-3. Create and push the git tag:
-   ```sh
-   git tag v0.0.X
-   git push origin v0.0.X
-   ```
-
-4. GitHub Actions will pick up the new tag and publish a release automatically.
-
-### Release with a new companion APK
-
-If the companion app has changed, bump the APK version before tagging:
-
-1. In `build.gradle`, increment `versionCode` and `versionName`:
-   ```groovy
-   versionCode X
-   versionName "X.0"
-   ```
-
-2. In `main.lua`, update the minimum required APK version to match:
-   ```lua
-   local MIN_VERSION_CODE = X -- minimum APK required versionCode
-   ```
-
-3. Then follow the plugin-only steps above. The GitHub Actions release will include the new APK and the plugin will prompt users to update it if their installed version is older than `MIN_VERSION_CODE`.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+Release builds are signed when `KEYSTORE_FILE` / `KEYSTORE_PASSWORD` /
+`KEY_ALIAS` / `KEY_PASSWORD` are provided via environment or `local.properties`.

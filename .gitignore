@@ -70,3 +70,6 @@ build/
 *.swo
 *.bak
 *.tmp
+# Android local config #
+########################
+local.properties
