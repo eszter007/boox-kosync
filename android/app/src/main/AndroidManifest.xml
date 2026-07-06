@@ -2,22 +2,27 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <permission android:name="org.koreader.backgroundonyxsynckoreader.permission.RECEIVE_SYNC_BROADCASTS" />
-
+    <!-- Package visibility for Onyx's content providers (NeoReader metadata). -->
     <queries>
         <package android:name="com.onyx.kreader" />
+        <provider android:authorities="com.onyx.content.database.ContentProvider" />
     </queries>
 
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Inside <manifest> -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- NeoReader only reads a synced position from Metadata on cold start;
+         applying remote progress kills its cached background process. -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+
+    <!-- Binary document matching reads book files from shared storage. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
-
-    <!-- Below API 30 fallback -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -28,36 +33,19 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BackgroundOnyxSyncKOReader">
 
-        <!-- Main activity to ensure app can start -->
         <activity
             android:name=".activity.MainActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:noHistory="true">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <receiver
-            android:name=".helper.SyncReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter android:priority="1000">
-                <action android:name="org.koreader.onyx.SYNC_PROGRESS" />
-                <action android:name="org.koreader.onyx.BULK_SYNC" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".helper.PageTurnReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="org.koreader.onyx.PAGE_TURN" />
-            </intent-filter>
-        </receiver>
+        <service
+            android:name=".service.SyncService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <receiver
             android:name=".helper.BootReceiver"
