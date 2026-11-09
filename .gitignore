@@ -73,3 +73,7 @@ build/
 # Android local config #
 ########################
 local.properties
+
+# Release signing #
+###################
+release.keystore
